@@ -27,6 +27,7 @@ pub enum DataKey {
     SettlementCaller,
     Admin,
     FeeTiers,
+    MinFeeStroops,
     MerchantVolume(Address),
 }
 
@@ -49,6 +50,7 @@ impl FeeCalculatorContract {
         Self::validate_tiers(&tiers);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::FeeTiers, &tiers);
+        env.storage().instance().set(&DataKey::MinFeeStroops, &0i128);
     }
 
     pub fn set_fee_tiers(env: Env, caller: Address, tiers: Vec<FeeTier>) {
@@ -56,6 +58,24 @@ impl FeeCalculatorContract {
         Self::require_admin(&env, &caller);
         Self::validate_tiers(&tiers);
         env.storage().instance().set(&DataKey::FeeTiers, &tiers);
+    }
+
+    pub fn set_min_fee_stroops(env: Env, caller: Address, min_fee_stroops: i128) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
+        if min_fee_stroops < 0 {
+            panic!("min_fee_stroops must be >= 0");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::MinFeeStroops, &min_fee_stroops);
+    }
+
+    pub fn get_min_fee_stroops(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MinFeeStroops)
+            .unwrap_or(0)
     }
 
     pub fn set_settlement_caller(env: Env, caller: Address, settlement_caller: Address) {
@@ -79,11 +99,24 @@ impl FeeCalculatorContract {
         let volume = Self::update_and_get_volume(&env, &merchant, amount);
         let fee_bps = Self::select_fee_bps(&env, volume);
 
-        let fee = amount
+        let mut fee = amount
             .checked_mul(fee_bps as i128)
             .expect("overflow")
             .checked_div(BPS_DENOMINATOR)
             .expect("division failure");
+
+        let min_fee_stroops: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MinFeeStroops)
+            .unwrap_or(0);
+        if fee < min_fee_stroops {
+            fee = min_fee_stroops;
+        }
+        if fee > amount {
+            fee = amount;
+        }
+
         let net = amount.checked_sub(fee).expect("underflow");
 
         env.events().publish(
