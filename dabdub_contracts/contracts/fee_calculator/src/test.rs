@@ -110,3 +110,24 @@ fn test_non_admin_cannot_update_fee_tiers() {
 
     client.set_fee_tiers(&random, &new_tiers);
 }
+
+/// Documents the current (buggy) behavior: `calculate_fee` has no access
+/// control, so an unrelated caller can pass any `merchant` address and still
+/// mutate that merchant's tracked volume. This test pins the buggy behavior so
+/// that once access control is added, it can be replaced with
+/// `test_calculate_fee_unauthorized_caller_panics`.
+#[test]
+fn test_calculate_fee_from_unrelated_caller_still_mutates_target_merchant_volume() {
+    let (env, client, _admin, merchant) = setup_env();
+    let attacker = Address::generate(&env);
+
+    // The attacker is not the merchant, yet the call succeeds and mutates the
+    // target merchant's volume.
+    let (_, _, bps) = client.calculate_fee(&attacker, &2_000);
+    assert_eq!(bps, 120);
+
+    // The target merchant's volume was mutated by the unrelated caller: a
+    // subsequent call from the merchant itself observes the elevated tier.
+    let (_, _, bps_from_merchant) = client.calculate_fee(&merchant, &1);
+    assert_eq!(bps_from_merchant, 120);
+}
