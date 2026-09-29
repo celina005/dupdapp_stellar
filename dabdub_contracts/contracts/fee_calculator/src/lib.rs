@@ -2,7 +2,7 @@
 
 mod test;
 
-use soroban_sdk::{contract, contractimpl, contracttype, vec, Address, Env, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Vec};
 
 const LEDGERS_PER_30_DAYS: u32 = 172_800;
 const BPS_DENOMINATOR: i128 = 10_000;
@@ -85,10 +85,12 @@ impl FeeCalculatorContract {
     }
 
     pub fn get_fee_tiers(env: Env) -> Vec<FeeTier> {
+        // `__constructor` always validates and stores `FeeTiers`, so for any
+        // live contract instance the tiers are guaranteed to be present.
         env.storage()
             .instance()
             .get(&DataKey::FeeTiers)
-            .unwrap_or(vec![&env, FeeTier { threshold_usdc: 0, fee_bps: 0 }])
+            .expect("tiers not initialized")
     }
 
     pub fn calculate_fee(env: Env, merchant: Address, amount: i128) -> (i128, i128, u32) {
